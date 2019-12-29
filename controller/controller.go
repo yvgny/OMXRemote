@@ -414,23 +414,10 @@ func (omxplayer *OMXPlayer) GetSource(writer http.ResponseWriter, request *http.
 		return
 	}
 
-	err := request.ParseForm()
-	if err != nil {
-		fmt.Println(err.Error())
-		writeErrorToHTTP(writer, err)
-		return
-	}
-
 	var source string
 	if err := omxplayer.object.Call(fmt.Sprintf(player_methods, "GetSource"), 0).Store(&source); err != nil {
 		writeErrorToHTTP(writer, err)
 		fmt.Fprintln(os.Stderr, err.Error())
-		return
-	}
-
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		writeErrorToHTTP(writer, err)
 		return
 	}
 
@@ -452,13 +439,6 @@ func (omxplayer *OMXPlayer) GetSource(writer http.ResponseWriter, request *http.
 func (omxplayer *OMXPlayer) GetDuration(writer http.ResponseWriter, request *http.Request) {
 	if omxplayer.conn == nil {
 		writeOfflineErrorToHTTP(writer)
-		return
-	}
-
-	err := request.ParseForm()
-	if err != nil {
-		fmt.Println(err.Error())
-		writeErrorToHTTP(writer, err)
 		return
 	}
 
