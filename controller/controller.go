@@ -57,6 +57,7 @@ func NewWebServer(address string, port string) *WebServer {
 	r.HandleFunc("/set_audio", omxplayer.SetAudio).Methods("POST")
 	r.HandleFunc("/seek", omxplayer.Seek).Methods("POST")
 	r.HandleFunc("/set_position", omxplayer.SetPosition).Methods("POST")
+	r.HandleFunc("/get_position", omxplayer.GetPosition).Methods("GET")
 	r.HandleFunc("/get_source", omxplayer.GetSource).Methods("GET")
 	r.HandleFunc("/get_duration", omxplayer.GetDuration).Methods("GET")
 	r.HandleFunc("/play_demo_movie", omxplayer.PlayDemo).Methods("GET")
@@ -449,13 +450,35 @@ func (omxplayer *OMXPlayer) GetDuration(writer http.ResponseWriter, request *htt
 		return
 	}
 
-	if err != nil {
+	bytes, err := json.Marshal(duration)
+	if err == nil {
+		_, err = writer.Write(bytes)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			writeErrorToHTTP(writer, err)
+			return
+		}
+	} else {
 		fmt.Fprintln(os.Stderr, err.Error())
 		writeErrorToHTTP(writer, err)
 		return
 	}
+}
 
-	bytes, err := json.Marshal(duration)
+func (omxplayer *OMXPlayer) GetPosition(writer http.ResponseWriter, request *http.Request) {
+	if omxplayer.conn == nil {
+		writeOfflineErrorToHTTP(writer)
+		return
+	}
+
+	var position int64
+	if err := omxplayer.object.Call(fmt.Sprintf(player_properties_method, "Get"), 0, player_interface, "Position").Store(&position); err != nil {
+		writeErrorToHTTP(writer, err)
+		fmt.Fprintln(os.Stderr, err.Error())
+		return
+	}
+
+	bytes, err := json.Marshal(position)
 	if err == nil {
 		_, err = writer.Write(bytes)
 		if err != nil {
