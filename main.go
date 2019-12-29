@@ -12,9 +12,8 @@ import (
 func main() {
 	portArg := flag.String("port", "8080", "port for the remote controller")
 	addressArg := flag.String("bind address", "0.0.0.0", "the adress on which the remote controller should listen")
-	busAddrArg := flag.String("bus address", "org.mpris.MediaPlayer2.omxplayer", "the bus address of the OMXPlayer instance")
 	flag.Parse()
-	remote := controller.NewWebServer(*addressArg, *portArg, *busAddrArg)
+	remote := controller.NewWebServer(*addressArg, *portArg)
 	err := remote.StartWebServer()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
