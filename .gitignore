@@ -16,3 +16,6 @@
 
 # Vim
 *.swp
+
+# Cache folder of the streamer struct
+torrents/

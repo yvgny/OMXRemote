@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"os/user"
 	"strconv"
-	"time"
 
 	"github.com/godbus/dbus"
 	"github.com/gorilla/mux"
@@ -32,54 +31,35 @@ const omx_dbus_file_pid = omx_dbus_file_addr + ".pid"
 const env_dbus_address = "DBUS_SESSION_BUS_ADDRESS"
 const env_dbus_pid = "DBUS_SESSION_BUS_PID"
 
-type WebServer struct {
-	router *mux.Router
-	srv    *http.Server
-}
-
 type OMXPlayer struct {
 	conn   *dbus.Conn
 	object dbus.BusObject
 }
 
-func NewWebServer(address string, port string) *WebServer {
-
+func NewOMXPlayer() *OMXPlayer {
 	omxplayer := &OMXPlayer{}
-
-	r := mux.NewRouter()
-	r.HandleFunc("/pause", omxplayer.Pause).Methods("GET")
-	r.HandleFunc("/play", omxplayer.Play).Methods("GET")
-	r.HandleFunc("/play_pause", omxplayer.PlayPause).Methods("GET")
-	r.HandleFunc("/stop", omxplayer.Stop).Methods("GET")
-	r.HandleFunc("/list_subtitles", omxplayer.ListSubtitles).Methods("GET")
-	r.HandleFunc("/list_audio", omxplayer.ListAudio).Methods("GET")
-	r.HandleFunc("/set_subtitle", omxplayer.SetSubtitle).Methods("POST")
-	r.HandleFunc("/set_audio", omxplayer.SetAudio).Methods("POST")
-	r.HandleFunc("/seek", omxplayer.Seek).Methods("POST")
-	r.HandleFunc("/set_position", omxplayer.SetPosition).Methods("POST")
-	r.HandleFunc("/get_position", omxplayer.GetPosition).Methods("GET")
-	r.HandleFunc("/get_source", omxplayer.GetSource).Methods("GET")
-	r.HandleFunc("/get_duration", omxplayer.GetDuration).Methods("GET")
-	r.HandleFunc("/play_demo_movie", omxplayer.PlayDemo).Methods("GET")
-	r.PathPrefix("/").Handler(http.StripPrefix("/", http.FileServer(http.Dir("www/"))))
-
-	server := &http.Server{
-		Addr:         address + ":" + port,
-		Handler:      r,
-		WriteTimeout: 15 * time.Second,
-		ReadTimeout:  15 * time.Second,
-	}
-
-	ws := &WebServer{
-		router: r,
-		srv:    server,
-	}
-
-	return ws
+	return omxplayer
 }
 
-func (ws *WebServer) StartWebServer() error {
-	return ws.srv.ListenAndServe()
+func (omxplayer *OMXPlayer) AddHandlers(handler *mux.Router) {
+
+	handler.HandleFunc("/pause", omxplayer.Pause).Methods("GET")
+	handler.HandleFunc("/play", omxplayer.Play).Methods("GET")
+	handler.HandleFunc("/play_pause", omxplayer.PlayPause).Methods("GET")
+	handler.HandleFunc("/stop", omxplayer.Stop).Methods("GET")
+	handler.HandleFunc("/list_subtitles", omxplayer.ListSubtitles).Methods("GET")
+	handler.HandleFunc("/list_audio", omxplayer.ListAudio).Methods("GET")
+	handler.HandleFunc("/set_subtitle", omxplayer.SetSubtitle).Methods("POST")
+	handler.HandleFunc("/set_audio", omxplayer.SetAudio).Methods("POST")
+	handler.HandleFunc("/seek", omxplayer.Seek).Methods("POST")
+	handler.HandleFunc("/set_position", omxplayer.SetPosition).Methods("POST")
+	handler.HandleFunc("/get_position", omxplayer.GetPosition).Methods("GET")
+	handler.HandleFunc("/get_source", omxplayer.GetSource).Methods("GET")
+	handler.HandleFunc("/get_duration", omxplayer.GetDuration).Methods("GET")
+	handler.HandleFunc("/play_demo_movie", omxplayer.PlayDemo).Methods("GET")
+	handler.HandleFunc("/open", omxplayer.Open).Methods("POST")
+	handler.PathPrefix("/").Handler(http.StripPrefix("/", http.FileServer(http.Dir("www/"))))
+
 }
 
 func cleanFiles() {
@@ -90,6 +70,84 @@ func cleanFiles() {
 func (omxplayer *OMXPlayer) PlayDemo(writer http.ResponseWriter, request *http.Request) {
 	cleanFiles()
 	cmd := exec.Command("omxplayer", "/home/pi/demo.mp4")
+	cmd.Start()
+
+	user, err := user.Current()
+	if err != nil {
+		writeErrorToHTTP(writer, err)
+		fmt.Fprintln(os.Stderr, err.Error())
+		return
+	}
+
+	addr, err := waitAndGetContent(fmt.Sprintf(omx_dbus_file_addr, user.Username))
+	if err != nil {
+		writeErrorToHTTP(writer, err)
+		fmt.Fprintln(os.Stderr, err.Error())
+		return
+	}
+
+	pid, err := waitAndGetContent(fmt.Sprintf(omx_dbus_file_pid, user.Username))
+	if err != nil {
+		writeErrorToHTTP(writer, err)
+		fmt.Fprintln(os.Stderr, err.Error())
+		return
+	}
+
+	err = os.Setenv(env_dbus_address, string(addr))
+	if err != nil {
+		writeErrorToHTTP(writer, err)
+		fmt.Fprintln(os.Stderr, err.Error())
+		return
+	}
+
+	err = os.Setenv(env_dbus_pid, string(pid))
+	if err != nil {
+		writeErrorToHTTP(writer, err)
+		fmt.Fprintln(os.Stderr, err.Error())
+		return
+	}
+
+	auth := []dbus.Auth{
+		dbus.AuthExternal(user.Username),
+		dbus.AuthCookieSha1(user.Username, user.HomeDir),
+	}
+
+	if omxplayer.conn, err = dbus.SessionBusPrivate(); err != nil {
+		writeErrorToHTTP(writer, err)
+		fmt.Fprintln(os.Stderr, err.Error())
+		return
+	}
+
+	if err = omxplayer.conn.Auth(auth); err != nil {
+		writeErrorToHTTP(writer, err)
+		fmt.Fprintln(os.Stderr, err.Error())
+		return
+	}
+
+	if err = omxplayer.conn.Hello(); err != nil {
+		writeErrorToHTTP(writer, err)
+		fmt.Fprintln(os.Stderr, err.Error())
+		return
+	}
+
+	omxplayer.object = omxplayer.conn.Object(dbus_address, root_path)
+
+	go func() {
+		cmd.Wait()
+		omxplayer.conn = nil
+	}()
+}
+
+func (omxplayer *OMXPlayer) Open(writer http.ResponseWriter, request *http.Request) {
+	err := request.ParseForm()
+	if err != nil {
+		fmt.Println(err.Error())
+		writeErrorToHTTP(writer, err)
+		return
+	}
+
+	cleanFiles()
+	cmd := exec.Command("omxplayer", request.Form.Get("file"))
 	cmd.Start()
 
 	user, err := user.Current()
