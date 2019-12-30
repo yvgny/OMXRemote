@@ -56,7 +56,6 @@ func (omxplayer *OMXPlayer) AddHandlers(handler *mux.Router) {
 	handler.HandleFunc("/get_position", omxplayer.GetPosition).Methods("GET")
 	handler.HandleFunc("/get_source", omxplayer.GetSource).Methods("GET")
 	handler.HandleFunc("/get_duration", omxplayer.GetDuration).Methods("GET")
-	handler.HandleFunc("/play_demo_movie", omxplayer.PlayDemo).Methods("GET")
 	handler.HandleFunc("/open", omxplayer.Open).Methods("POST")
 	handler.PathPrefix("/").Handler(http.StripPrefix("/", http.FileServer(http.Dir("www/"))))
 
@@ -65,77 +64,6 @@ func (omxplayer *OMXPlayer) AddHandlers(handler *mux.Router) {
 func cleanFiles() {
 	os.Remove(omx_dbus_file_addr)
 	os.Remove(omx_dbus_file_pid)
-}
-
-func (omxplayer *OMXPlayer) PlayDemo(writer http.ResponseWriter, request *http.Request) {
-	cleanFiles()
-	cmd := exec.Command("omxplayer", "/home/pi/demo.mp4")
-	cmd.Start()
-
-	user, err := user.Current()
-	if err != nil {
-		writeErrorToHTTP(writer, err)
-		fmt.Fprintln(os.Stderr, err.Error())
-		return
-	}
-
-	addr, err := waitAndGetContent(fmt.Sprintf(omx_dbus_file_addr, user.Username))
-	if err != nil {
-		writeErrorToHTTP(writer, err)
-		fmt.Fprintln(os.Stderr, err.Error())
-		return
-	}
-
-	pid, err := waitAndGetContent(fmt.Sprintf(omx_dbus_file_pid, user.Username))
-	if err != nil {
-		writeErrorToHTTP(writer, err)
-		fmt.Fprintln(os.Stderr, err.Error())
-		return
-	}
-
-	err = os.Setenv(env_dbus_address, string(addr))
-	if err != nil {
-		writeErrorToHTTP(writer, err)
-		fmt.Fprintln(os.Stderr, err.Error())
-		return
-	}
-
-	err = os.Setenv(env_dbus_pid, string(pid))
-	if err != nil {
-		writeErrorToHTTP(writer, err)
-		fmt.Fprintln(os.Stderr, err.Error())
-		return
-	}
-
-	auth := []dbus.Auth{
-		dbus.AuthExternal(user.Username),
-		dbus.AuthCookieSha1(user.Username, user.HomeDir),
-	}
-
-	if omxplayer.conn, err = dbus.SessionBusPrivate(); err != nil {
-		writeErrorToHTTP(writer, err)
-		fmt.Fprintln(os.Stderr, err.Error())
-		return
-	}
-
-	if err = omxplayer.conn.Auth(auth); err != nil {
-		writeErrorToHTTP(writer, err)
-		fmt.Fprintln(os.Stderr, err.Error())
-		return
-	}
-
-	if err = omxplayer.conn.Hello(); err != nil {
-		writeErrorToHTTP(writer, err)
-		fmt.Fprintln(os.Stderr, err.Error())
-		return
-	}
-
-	omxplayer.object = omxplayer.conn.Object(dbus_address, root_path)
-
-	go func() {
-		cmd.Wait()
-		omxplayer.conn = nil
-	}()
 }
 
 func (omxplayer *OMXPlayer) Open(writer http.ResponseWriter, request *http.Request) {
