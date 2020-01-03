@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/anacrolix/torrent/metainfo"
@@ -26,6 +27,11 @@ type Streamer struct {
 	Password    string
 	Controller  *controller.OMXPlayer
 	cmd         *exec.Cmd
+}
+
+type TorrentInfo struct {
+	Index    int
+	Filename string
 }
 
 func NewStreamer(libraryPath string, username string, password string, controller *controller.OMXPlayer) (*Streamer, error) {
@@ -50,15 +56,19 @@ func NewStreamer(libraryPath string, username string, password string, controlle
 func (streamer *Streamer) AddHandlers(handler *mux.Router) {
 	handler.HandleFunc("/search", streamer.Search).Methods("POST")
 	handler.HandleFunc("/stop_stream", streamer.Stop).Methods("GET")
-	handler.HandleFunc("/is_streaming", streamer.IsReady).Methods("GET")
+	handler.HandleFunc("/is_streaming", streamer.IsStreaming).Methods("GET")
 	handler.HandleFunc("/download_torrent", streamer.DownloadTorrent).Methods("POST")
 	handler.HandleFunc("/list_files", streamer.ListFileInTorrent).Methods("POST")
 	handler.HandleFunc("/stream_torrent", streamer.StreamTorrent).Methods("POST")
 }
 
-func (streamer *Streamer) IsReady(writer http.ResponseWriter, request *http.Request) {
-	_, err := os.Stat(ready_flag_path)
-	exists := !os.IsNotExist(err)
+func (streamer *Streamer) IsStreaming(writer http.ResponseWriter, request *http.Request) {
+	exists := false
+
+	if streamer.cmd != nil {
+		_, err := os.Stat(ready_flag_path)
+		exists = !os.IsNotExist(err)
+	}
 
 	bytes, err := json.Marshal(exists)
 	if err == nil {
@@ -132,9 +142,12 @@ func (streamer *Streamer) ListFileInTorrent(writer http.ResponseWriter, request 
 
 	file_infos := info.UpvertedFiles()
 
-	files := make([]string, len(file_infos))
+	files := make([]TorrentInfo, len(file_infos))
 	for i := 0; i < len(file_infos); i++ {
-		files[i] = file_infos[i].DisplayPath(&info)
+		files[i] = TorrentInfo{
+			Index:    i,
+			Filename: file_infos[i].DisplayPath(&info),
+		}
 	}
 
 	bytes, err := json.Marshal(files)
@@ -169,7 +182,7 @@ func (streamer *Streamer) DownloadTorrent(writer http.ResponseWriter, request *h
 		}
 	}
 
-	path, err := ygg.FindAndDlFile(request.Form.Get("destUrl"), streamer.Username, streamer.Password, streamer.Timeout, streamer.client)
+	path, err := ygg.FindAndDlFile(request.Form.Get("descUrl"), streamer.Username, streamer.Password, streamer.Timeout, streamer.client)
 	if err != nil {
 		writeErrorToHTTP(writer, err)
 		fmt.Fprintln(os.Stderr, err.Error())
@@ -221,6 +234,10 @@ func (streamer *Streamer) Search(writer http.ResponseWriter, request *http.Reque
 		return
 	}
 	streamer.client = client
+
+	for idx, _ := range torrents {
+		torrents[idx].Name = strings.TrimSpace(torrents[idx].Name)
+	}
 
 	bytes, err := json.Marshal(torrents)
 	if err != nil {

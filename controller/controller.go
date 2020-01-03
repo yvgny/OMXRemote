@@ -50,12 +50,16 @@ func (omxplayer *OMXPlayer) AddHandlers(handler *mux.Router) {
 	handler.HandleFunc("/list_subtitles", omxplayer.ListSubtitles).Methods("GET")
 	handler.HandleFunc("/list_audio", omxplayer.ListAudio).Methods("GET")
 	handler.HandleFunc("/set_subtitle", omxplayer.SetSubtitle).Methods("POST")
+	handler.HandleFunc("/show_subtitles", omxplayer.ShowSubtitles).Methods("GET")
+	handler.HandleFunc("/hide_subtitles", omxplayer.HideSubtitles).Methods("GET")
+	handler.HandleFunc("/play", omxplayer.Play).Methods("GET")
 	handler.HandleFunc("/set_audio", omxplayer.SetAudio).Methods("POST")
 	handler.HandleFunc("/seek", omxplayer.Seek).Methods("POST")
 	handler.HandleFunc("/set_position", omxplayer.SetPosition).Methods("POST")
 	handler.HandleFunc("/get_position", omxplayer.GetPosition).Methods("GET")
 	handler.HandleFunc("/get_source", omxplayer.GetSource).Methods("GET")
 	handler.HandleFunc("/get_duration", omxplayer.GetDuration).Methods("GET")
+	handler.HandleFunc("/playback_status", omxplayer.PlaybackStatus).Methods("GET")
 	handler.HandleFunc("/open", omxplayer.Open).Methods("POST")
 	handler.PathPrefix("/").Handler(http.StripPrefix("/", http.FileServer(http.Dir("www/"))))
 
@@ -158,6 +162,34 @@ func (omxplayer *OMXPlayer) Pause(writer http.ResponseWriter, request *http.Requ
 
 }
 
+func (omxplayer *OMXPlayer) ShowSubtitles(writer http.ResponseWriter, request *http.Request) {
+	if omxplayer.conn == nil {
+		writeOfflineErrorToHTTP(writer)
+		return
+	}
+
+	if err := omxplayer.object.Call(fmt.Sprintf(player_methods, "ShowSubtitles"), 0).Err; err != nil {
+		writeErrorToHTTP(writer, err)
+		fmt.Fprintln(os.Stderr, err.Error())
+		return
+	}
+
+}
+
+func (omxplayer *OMXPlayer) HideSubtitles(writer http.ResponseWriter, request *http.Request) {
+	if omxplayer.conn == nil {
+		writeOfflineErrorToHTTP(writer)
+		return
+	}
+
+	if err := omxplayer.object.Call(fmt.Sprintf(player_methods, "HideSubtitles"), 0).Err; err != nil {
+		writeErrorToHTTP(writer, err)
+		fmt.Fprintln(os.Stderr, err.Error())
+		return
+	}
+
+}
+
 func (omxplayer *OMXPlayer) Play(writer http.ResponseWriter, request *http.Request) {
 	if omxplayer.conn == nil {
 		writeOfflineErrorToHTTP(writer)
@@ -183,6 +215,8 @@ func (omxplayer *OMXPlayer) Stop(writer http.ResponseWriter, request *http.Reque
 		fmt.Fprintln(os.Stderr, err.Error())
 		return
 	}
+
+	omxplayer.conn = nil
 
 }
 
@@ -409,6 +443,34 @@ func (omxplayer *OMXPlayer) GetSource(writer http.ResponseWriter, request *http.
 	}
 
 	bytes, err := json.Marshal(source)
+	if err == nil {
+		_, err = writer.Write(bytes)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			writeErrorToHTTP(writer, err)
+			return
+		}
+	} else {
+		fmt.Fprintln(os.Stderr, err.Error())
+		writeErrorToHTTP(writer, err)
+		return
+	}
+}
+
+func (omxplayer *OMXPlayer) PlaybackStatus(writer http.ResponseWriter, request *http.Request) {
+	if omxplayer.conn == nil {
+		writeOfflineErrorToHTTP(writer)
+		return
+	}
+
+	var playback_status string
+	if err := omxplayer.object.Call(fmt.Sprintf(player_properties_method, "Get"), 0, player_interface, "PlaybackStatus").Store(&playback_status); err != nil {
+		writeErrorToHTTP(writer, err)
+		fmt.Fprintln(os.Stderr, err.Error())
+		return
+	}
+
+	bytes, err := json.Marshal(playback_status)
 	if err == nil {
 		_, err = writer.Write(bytes)
 		if err != nil {
