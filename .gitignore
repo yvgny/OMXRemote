@@ -19,3 +19,7 @@
 
 # Cache folder of the streamer struct
 torrents/
+
+# Node.js
+node_modules/
+package-lock.json
