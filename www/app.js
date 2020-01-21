@@ -1,5 +1,7 @@
 "use strict";
 
+let tnp = require("torrent-name-parser");
+
 // Constants
 const SEEK_TIME = 5 * 1000000; // In microseconds
 const REFRESH_PERIOD = 1000; // In milliseconds
@@ -189,10 +191,11 @@ function setupSearchBox() {
             });
 
             results.forEach(result => {
+                let infos = tnp(result.Name);
                 modalList.append(
                     `
                         <li class="list-group-item d-flex justify-content-between align-items-center" desc-url="${result.DescURL}">
-                            ${result.Name} (${result.Seeders} seeders, ${result.Size})
+                            ${infos.title} [${infos.resolution}, ${infos.codec}] (${result.Seeders} seeders, ${result.Size})
                         </li>
 
                 `)
