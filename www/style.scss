@@ -2,22 +2,23 @@
 @import 'node_modules/bootstrap/scss/_variables';
 
 body {
-    background: url("background.jpg") no-repeat center center fixed;
-    -webkit-background-size: cover;
-    -moz-background-size: cover;
-    background-size: cover;
-    -o-background-size: cover;
+  background: url("background.jpg") no-repeat center center fixed;
+  -webkit-background-size: cover;
+  -moz-background-size: cover;
+  background-size: cover;
+  -o-background-size: cover;
 }
+
 .controls-info p {
-    font-style: italic;
+  font-style: italic;
 }
 
 .duration-control {
-    background: linear-gradient(0deg, $dark 50%, rgba(255, 255, 255, 0) 50%);
+  background: linear-gradient(0deg, $dark 50%, rgba(255, 255, 255, 0) 50%);
 }
 
 
 .vertical-align {
-    display: flex;
-    align-items: center;
+  display: flex;
+  align-items: center;
 }

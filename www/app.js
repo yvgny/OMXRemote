@@ -8,31 +8,32 @@ const MAX_IS_STREAMING_WAIT_TIME = 30; // In seconds
 const PEERFLIX_DEFAULT_ADDRESS = "http://127.0.0.1:8888/";
 
 // Controller URLs
-let playback_statusURL = window.location.origin + "/playback_status";
-let get_durationURL = window.location.origin + "/get_duration";
-let get_positionURL = window.location.origin + "/get_position";
-let set_positionURL = window.location.origin + "/set_position";
-let list_subtitlesURL = window.location.origin + "/list_subtitles";
-let list_audioURL = window.location.origin + "/list_audio";
-let set_subtitlesURL = window.location.origin + "/set_subtitle";
-let set_audioURL = window.location.origin + "/set_audio";
-let get_sourceURL = window.location.origin + "/get_source";
-let seekURL = window.location.origin + "/seek";
-let playURL = window.location.origin + "/play";
-let pauseURL = window.location.origin + "/pause";
-let stopURL = window.location.origin + "/stop";
-let openURL = window.location.origin + "/open";
-let play_pauseURL = window.location.origin + "/play_pause";
-let show_subtitlesURL = window.location.origin + "/show_subtitles";
-let hide_subtitlesURL = window.location.origin + "/hide_subtitles";
+let base_url = window.location.origin;
+let playback_statusURL = base_url + "/playback_status";
+let get_durationURL = base_url + "/get_duration";
+let get_positionURL = base_url + "/get_position";
+let set_positionURL = base_url + "/set_position";
+let list_subtitlesURL = base_url + "/list_subtitles";
+let list_audioURL = base_url + "/list_audio";
+let set_subtitlesURL = base_url + "/set_subtitle";
+let set_audioURL = base_url + "/set_audio";
+let get_sourceURL = base_url + "/get_source";
+let seekURL = base_url + "/seek";
+let playURL = base_url + "/play";
+let pauseURL = base_url + "/pause";
+let stopURL = base_url + "/stop";
+let openURL = base_url + "/open";
+let play_pauseURL = base_url + "/play_pause";
+let show_subtitlesURL = base_url + "/show_subtitles";
+let hide_subtitlesURL = base_url + "/hide_subtitles";
 
 // Streamer URLs
-let searchURL = window.location.origin + "/search";
-let is_streamingURL = window.location.origin + "/is_streaming";
-let download_torrentURL = window.location.origin + "/download_torrent";
-let list_filesURL = window.location.origin + "/list_files";
-let stream_torrentURL = window.location.origin + "/stream_torrent";
-let stop_streamingURL = window.location.origin + "/stop_stream";
+let searchURL = base_url + "/search";
+let is_streamingURL = base_url + "/is_streaming";
+let download_torrentURL = base_url + "/download_torrent";
+let list_filesURL = base_url + "/list_files";
+let stream_torrentURL = base_url + "/stream_torrent";
+let stop_streamingURL = base_url + "/stop_stream";
 
 
 // Current state
@@ -40,10 +41,29 @@ let duration = 0; // In microseconds
 let position = 0; // In microseconds
 let subtitles = [];
 let audio_tracks = [];
+let prevent_duration_slider_update = false;
 
 $(document).ready(function () {
     pollCurrentState();
     showListModalList();
+
+    // Configure duration bar
+    let duration_slider = $("#duration-slider");
+    duration_slider
+        .on('mousedown', function () {
+            prevent_duration_slider_update = true;
+        })
+        .on('mouseup', function () {
+            $.post(set_positionURL, {offset: duration_slider.val()});
+            setTimeout(() => {
+                prevent_duration_slider_update = false;
+            }, REFRESH_PERIOD)
+        })
+        .on('input change', function () {
+            if (prevent_duration_slider_update) {
+                setTime(duration_slider.val())
+            }
+        });
 
     // Configure onClick events
     $("#playButton").on("click", function () {
@@ -247,11 +267,6 @@ function showListModalList() {
     $("#modal-list").show();
 }
 
-function isStreaming() {
-    $.getJSON(is_streamingURL)
-        .done(is)
-}
-
 function pollCurrentState() {
     $.getJSON(playback_statusURL)
         .done(function (playback_status) {
@@ -277,7 +292,10 @@ function pollCurrentState() {
             position = 0
         });
 
-    setTime();
+    if (!prevent_duration_slider_update) {
+        setTime(position);
+        setDurationSlider(position);
+    }
 
     $.getJSON(get_sourceURL)
         .done(function (source) {
@@ -339,11 +357,14 @@ function togglePlayButton() {
     }
 }
 
-function setTime() {
-    $("#time").text(formatTime(position) + " / " + formatTime(duration));
+function setTime(pos) {
+    $("#time").text(formatTime(pos) + " / " + formatTime(duration));
+}
+
+function setDurationSlider(pos) {
     $("#duration-slider")
-        .attr("max", "" + duration)
-        .attr("value", "" + position);
+        .prop("max", duration)
+        .prop("value", pos);
 }
 
 function formatTime(totalMicroseconds) {
@@ -356,8 +377,4 @@ function formatTime(totalMicroseconds) {
     let seconds = totalSeconds - hours * 3600 - minutes * 60;
 
     return "" + formatter.format(hours) + ":" + formatter.format(minutes) + ":" + formatter.format(seconds)
-}
-
-function selectFromList(getList, callback) {
-
 }
