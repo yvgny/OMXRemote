@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 	"sync"
-	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/yvgny/OMXRemote/controller"
@@ -58,10 +57,10 @@ func NewWebServer(address, port string) *WebServer {
 	r := mux.NewRouter()
 
 	server := &http.Server{
-		Addr:         address + ":" + port,
-		Handler:      r,
-		WriteTimeout: 15 * time.Second,
-		ReadTimeout:  15 * time.Second,
+		Addr:    address + ":" + port,
+		Handler: r,
+		// WriteTimeout: 15 * time.Second,
+		// ReadTimeout:  15 * time.Second,
 	}
 
 	ws := &WebServer{

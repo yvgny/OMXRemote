@@ -7,7 +7,7 @@ const SEEK_TIME = 5 * 1000000; // In microseconds
 const REFRESH_PERIOD = 1000; // In milliseconds
 const POPOVERS_TIMEOUT = 2000; // In milliseconds
 const MAX_IS_STREAMING_WAIT_TIME = 30; // In seconds
-const PEERFLIX_DEFAULT_ADDRESS = "http://127.0.0.1:8888/";
+const PEERFLIX_DEFAULT_ADDRESS = "http://127.0.0.1:8080/get_stream";
 
 // Controller URLs
 let base_url = window.location.origin;

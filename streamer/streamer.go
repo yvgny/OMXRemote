@@ -2,14 +2,15 @@ package streamer
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/anacrolix/torrent"
 	"github.com/anacrolix/torrent/metainfo"
 	"github.com/gorilla/mux"
 	"github.com/juliensalinas/torrengo/ygg"
@@ -17,16 +18,19 @@ import (
 )
 
 const torrent_extension = ".torrent"
+const data_subdirectory = "/data"
 const ready_flag_path = "/tmp/stream_is_ready"
 
 type Streamer struct {
-	client      *http.Client
-	Timeout     time.Duration
-	LibraryPath string
-	Username    string
-	Password    string
-	Controller  *controller.OMXPlayer
-	cmd         *exec.Cmd
+	client        *http.Client
+	Timeout       time.Duration
+	LibraryPath   string
+	Username      string
+	Password      string
+	torrentClient *torrent.Client
+	Controller    *controller.OMXPlayer
+	cmd           *torrent.Reader
+	torrentFile   *torrent.File
 }
 
 type TorrentInfo struct {
@@ -42,12 +46,21 @@ func NewStreamer(libraryPath string, username string, password string, controlle
 		}
 	}
 
+	defaultTorrentConfig := torrent.NewDefaultClientConfig()
+	defaultTorrentConfig.DataDir = libraryPath + data_subdirectory
+	defaultTorrentConfig.ListenPort = 42070
+	torrentClient, err := torrent.NewClient(defaultTorrentConfig)
+	if err != nil {
+		return nil, err
+	}
+
 	streamer := &Streamer{
-		Timeout:     10 * time.Second,
-		LibraryPath: libraryPath,
-		Username:    username,
-		Password:    password,
-		Controller:  controller,
+		Timeout:       10 * time.Second,
+		LibraryPath:   libraryPath,
+		Username:      username,
+		Password:      password,
+		Controller:    controller,
+		torrentClient: torrentClient,
 	}
 
 	return streamer, nil
@@ -57,18 +70,18 @@ func (streamer *Streamer) AddHandlers(handler *mux.Router) {
 	handler.HandleFunc("/search", streamer.Search).Methods("POST")
 	handler.HandleFunc("/stop_stream", streamer.Stop).Methods("GET")
 	handler.HandleFunc("/is_streaming", streamer.IsStreaming).Methods("GET")
+	handler.HandleFunc("/get_stream", streamer.GetStream).Methods("GET")
 	handler.HandleFunc("/download_torrent", streamer.DownloadTorrent).Methods("POST")
 	handler.HandleFunc("/list_files", streamer.ListFileInTorrent).Methods("POST")
 	handler.HandleFunc("/stream_torrent", streamer.StreamTorrent).Methods("POST")
 }
 
-func (streamer *Streamer) IsStreaming(writer http.ResponseWriter, request *http.Request) {
-	exists := false
+func (streamer *Streamer) GetStream(writer http.ResponseWriter, request *http.Request) {
+	http.ServeContent(writer, request, streamer.torrentFile.DisplayPath(), time.Time{}, *streamer.cmd)
+}
 
-	if streamer.cmd != nil {
-		_, err := os.Stat(ready_flag_path)
-		exists = !os.IsNotExist(err)
-	}
+func (streamer *Streamer) IsStreaming(writer http.ResponseWriter, request *http.Request) {
+	exists := streamer.torrentFile != nil
 
 	bytes, err := json.Marshal(exists)
 	if err == nil {
@@ -86,9 +99,10 @@ func (streamer *Streamer) IsStreaming(writer http.ResponseWriter, request *http.
 }
 
 func (streamer *Streamer) Stop(writer http.ResponseWriter, request *http.Request) {
-	if streamer.cmd != nil {
-		streamer.cmd.Process.Kill()
-		streamer.cmd.Wait()
+	if streamer.torrentFile != nil {
+		streamer.torrentFile.Torrent().Drop()
+		os.RemoveAll(streamer.LibraryPath + data_subdirectory)
+		streamer.torrentFile = nil
 		streamer.cmd = nil
 	}
 }
@@ -107,17 +121,23 @@ func (streamer *Streamer) StreamTorrent(writer http.ResponseWriter, request *htt
 		return
 	}
 
-	_ = os.Remove(ready_flag_path)
-
-	cmd := exec.Command("peerflix", path, "--index", fmt.Sprintf("%d", idx), "--remove", "--on-listening", fmt.Sprintf("touch %s", ready_flag_path), "--quiet")
-	err = cmd.Start()
+	t, err := streamer.torrentClient.AddTorrentFromFile(path)
 	if err != nil {
 		writeErrorToHTTP(writer, err)
 		return
 	}
+	files := t.Files()
+	if idx < 0 || idx >= len(files) {
+		writeErrorToHTTP(writer, errors.New("Invalid index"))
+		return
+	}
 
-	streamer.cmd = cmd
-
+	reader := files[idx].NewReader()
+	//files[idx].Download()
+	reader.SetResponsive()
+	reader.SetReadahead(1024 * 20)
+	streamer.torrentFile = files[idx]
+	streamer.cmd = &reader
 }
 
 func (streamer *Streamer) ListFileInTorrent(writer http.ResponseWriter, request *http.Request) {
